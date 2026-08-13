@@ -20,3 +20,10 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local database
+database/*.db
+database/*.db-*
+
+__pycache__/
+*.py[cod]
