@@ -3,8 +3,14 @@ import os
 import discord
 from discord.ext import commands
 from discord import app_commands
-from dotenv import load_dotenv
+import asyncio
 
+import uvicorn
+
+from backend.bot_server import app as bot_server_app
+
+from dotenv import load_dotenv
+from backend.discord_service import set_bot
 from database.database import (
     initialize_database,
     register_friend,
@@ -33,6 +39,10 @@ if not OWNER_ID:
 class RemoteDM(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
+        intents.messages = True
+        intents.dm_messages = True
+
+
 
         super().__init__(
             command_prefix="!",
@@ -55,6 +65,7 @@ bot = RemoteDM()
 
 @bot.event
 async def on_ready():
+    set_bot(bot)
     print(f"Logged in as {bot.user}")
 
 
@@ -231,4 +242,34 @@ async def find(interaction: discord.Interaction, name: str):
         f"Found: {friend['display_name']} — `{friend['discord_user_id']}`",
         ephemeral=True,
     )
+
+async def send_dm(discord_user_id: int, message: str):
+    user = await bot.fetch_user(discord_user_id)
+
+    if user is None:
+        raise ValueError("Discord user not found.")
+
+    await user.send(message)
+
+def start_internal_server():
+    port = int(os.getenv("BOT_INTERNAL_PORT", "8765"))
+
+    config = uvicorn.Config(
+        bot_server_app,
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+    )
+
+    server = uvicorn.Server(config)
+    asyncio.run(server.serve())
+
+
+import threading
+
+threading.Thread(
+    target=start_internal_server,
+    daemon=True,
+).start()
+
 bot.run(TOKEN)
