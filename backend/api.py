@@ -7,7 +7,11 @@ from pydantic import BaseModel
 
 from backend.auth import require_api_auth
 from backend.messaging import prepare_message
-from database.database import get_messages, save_message
+from database.database import (
+    get_conversation,
+    get_messages,
+    save_message,
+)
 
 
 load_dotenv()
@@ -56,6 +60,27 @@ async def protected_test(
         "authenticated": True,
     }
 
+@app.get("/api/conversations/{discord_user_id}")
+async def get_conversation_messages(
+    discord_user_id: int,
+    _: bool = Depends(require_api_auth),
+):
+    messages = get_conversation(discord_user_id)
+
+    return {
+        "recipient_id": discord_user_id,
+        "messages": [
+            {
+                "id": message["id"],
+                "sender_discord_user_id": message["sender_discord_user_id"],
+                "recipient_discord_user_id": message["recipient_discord_user_id"],
+                "direction": message["direction"],
+                "content": message["content"],
+                "created_at": message["created_at"],
+            }
+            for message in messages
+        ],
+    }
 
 @app.get("/api/messages/{discord_user_id}")
 async def get_user_messages(

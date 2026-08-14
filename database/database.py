@@ -249,6 +249,38 @@ def get_messages(
 
     return messages
 
+def get_conversation(
+    discord_user_id: int,
+    limit: int = 100,
+):
+    connection = get_connection()
+
+    messages = connection.execute(
+        """
+        SELECT
+            id,
+            sender_discord_user_id,
+            recipient_discord_user_id,
+            direction,
+            content,
+            created_at
+        FROM messages
+        WHERE
+            sender_discord_user_id = ?
+            OR recipient_discord_user_id = ?
+        ORDER BY id ASC
+        LIMIT ?
+        """,
+        (
+            str(discord_user_id),
+            str(discord_user_id),
+            limit,
+        ),
+    ).fetchall()
+
+    connection.close()
+
+    return messages
 
 def archive_and_unregister(discord_user_id: int):
     active_connection = get_connection()
@@ -327,4 +359,4 @@ def archive_and_unregister(discord_user_id: int):
     active_connection.commit()
     active_connection.close()
 
-    return True
+    return 
