@@ -1,15 +1,14 @@
 import os
+import asyncio
+import threading
 
 import discord
-from discord.ext import commands
-from discord import app_commands
-import asyncio
-
 import uvicorn
+from discord import app_commands
+from discord.ext import commands
+from dotenv import load_dotenv
 
 from backend.bot_server import app as bot_server_app
-
-from dotenv import load_dotenv
 from backend.discord_service import set_bot
 from database.database import (
     initialize_database,
@@ -19,11 +18,17 @@ from database.database import (
     find_friend,
     is_registered,
     archive_and_unregister,
+    save_message,
 )
+
+
 load_dotenv()
+
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GUILD_ID = os.getenv("TEST_GUILD_ID")
+OWNER_ID = os.getenv("OWNER_DISCORD_ID")
+
 
 if not TOKEN:
     raise RuntimeError("DISCORD_BOT_TOKEN is not set in .env")
@@ -31,18 +36,16 @@ if not TOKEN:
 if not GUILD_ID:
     raise RuntimeError("TEST_GUILD_ID is not set in .env")
 
-OWNER_ID = os.getenv("OWNER_DISCORD_ID")
-
 if not OWNER_ID:
     raise RuntimeError("OWNER_DISCORD_ID is not set in .env")
+
 
 class RemoteDM(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.messages = True
         intents.dm_messages = True
-
-
+        intents.message_content = True
 
         super().__init__(
             command_prefix="!",
@@ -71,13 +74,14 @@ async def on_ready():
 
 @bot.tree.command(
     name="ping",
-    description="Check whether RemoteDM is online."
+    description="Check whether RemoteDM is online.",
 )
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message(
         "Pong! RemoteDM is alive.",
         ephemeral=True,
     )
+
 
 class RegisterView(discord.ui.View):
     def __init__(self):
@@ -116,12 +120,12 @@ class RegisterView(discord.ui.View):
             view=None,
         )
 
+
 @bot.tree.command(
     name="register",
-    description="Register with RemoteDM."
+    description="Register with RemoteDM.",
 )
 async def register(interaction: discord.Interaction):
-
     if is_registered(interaction.user.id):
         await interaction.response.send_message(
             "You're already registered with RemoteDM.",
@@ -138,12 +142,12 @@ async def register(interaction: discord.Interaction):
         ephemeral=True,
     )
 
+
 @bot.tree.command(
     name="unregister",
-    description="Opt out of RemoteDM."
+    description="Opt out of RemoteDM.",
 )
 async def unregister(interaction: discord.Interaction):
-
     if not is_registered(interaction.user.id):
         await interaction.response.send_message(
             "You are not currently registered with RemoteDM.",
@@ -158,12 +162,12 @@ async def unregister(interaction: discord.Interaction):
         ephemeral=True,
     )
 
+
 @bot.tree.command(
     name="friends",
-    description="Show people registered with RemoteDM."
+    description="Show people registered with RemoteDM.",
 )
 async def friends(interaction: discord.Interaction):
-
     if str(interaction.user.id) != OWNER_ID:
         await interaction.response.send_message(
             "You are not authorized to use this command.",
@@ -192,12 +196,18 @@ async def friends(interaction: discord.Interaction):
         ephemeral=True,
     )
 
+
 @bot.tree.command(
     name="alias",
-    description="Add an alias for your RemoteDM profile."
+    description="Add an alias for your RemoteDM profile.",
 )
-@app_commands.describe(alias="The name people can use to refer to you.")
-async def alias(interaction: discord.Interaction, alias: str):
+@app_commands.describe(
+    alias="The name people can use to refer to you."
+)
+async def alias(
+    interaction: discord.Interaction,
+    alias: str,
+):
     success = add_alias(
         interaction.user.id,
         alias,
@@ -215,13 +225,18 @@ async def alias(interaction: discord.Interaction, alias: str):
         ephemeral=True,
     )
 
+
 @bot.tree.command(
     name="find",
-    description="Find a registered friend by name or alias."
+    description="Find a registered friend by name or alias.",
 )
-@app_commands.describe(name="Friend's name or alias")
-async def find(interaction: discord.Interaction, name: str):
-
+@app_commands.describe(
+    name="Friend's name or alias"
+)
+async def find(
+    interaction: discord.Interaction,
+    name: str,
+):
     if not is_registered(interaction.user.id):
         await interaction.response.send_message(
             "You need to register with /register first.",
@@ -243,13 +258,6 @@ async def find(interaction: discord.Interaction, name: str):
         ephemeral=True,
     )
 
-async def send_dm(discord_user_id: int, message: str):
-    user = await bot.fetch_user(discord_user_id)
-
-    if user is None:
-        raise ValueError("Discord user not found.")
-
-    await user.send(message)
 
 def start_internal_server():
     port = int(os.getenv("BOT_INTERNAL_PORT", "8765"))
@@ -265,11 +273,36 @@ def start_internal_server():
     asyncio.run(server.serve())
 
 
-import threading
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+
+    if not isinstance(message.channel, discord.DMChannel):
+        return
+
+    if not is_registered(message.author.id):
+        return
+
+    save_message(
+        sender_discord_user_id=message.author.id,
+        recipient_discord_user_id=bot.user.id,
+        direction="incoming",
+        content=message.content,
+    )
+
+    print(
+        f"Incoming DM from {message.author.display_name}: "
+        f"{len(message.content)} characters"
+    )
+
+    await bot.process_commands(message)
+
 
 threading.Thread(
     target=start_internal_server,
     daemon=True,
 ).start()
+
 
 bot.run(TOKEN)

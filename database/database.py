@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 
+
 DATABASE_PATH = Path(__file__).parent / "remotedm.db"
 
 
@@ -42,6 +43,19 @@ def initialize_database():
         """
     )
 
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_discord_user_id TEXT NOT NULL,
+            recipient_discord_user_id TEXT,
+            direction TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
     connection.commit()
     connection.close()
 
@@ -68,6 +82,7 @@ def register_friend(discord_user_id: int, display_name: str):
     connection.commit()
     connection.close()
 
+
 def is_registered(discord_user_id: int):
     connection = get_connection()
 
@@ -84,6 +99,7 @@ def is_registered(discord_user_id: int):
     connection.close()
 
     return friend is not None
+
 
 def get_registered_friends():
     connection = get_connection()
@@ -136,6 +152,7 @@ def add_alias(discord_user_id: int, alias: str):
     connection.commit()
     connection.close()
 
+
 def find_friend(name: str):
     connection = get_connection()
 
@@ -163,6 +180,76 @@ def find_friend(name: str):
     connection.close()
 
     return friend
+
+
+def save_message(
+    sender_discord_user_id: int,
+    recipient_discord_user_id: int | None,
+    direction: str,
+    content: str,
+):
+    connection = get_connection()
+
+    connection.execute(
+        """
+        INSERT INTO messages (
+            sender_discord_user_id,
+            recipient_discord_user_id,
+            direction,
+            content
+        )
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            str(sender_discord_user_id),
+            (
+                str(recipient_discord_user_id)
+                if recipient_discord_user_id is not None
+                else None
+            ),
+            direction,
+            content,
+        ),
+    )
+
+    connection.commit()
+    connection.close()
+
+
+def get_messages(
+    discord_user_id: int,
+    limit: int = 50,
+):
+    connection = get_connection()
+
+    messages = connection.execute(
+        """
+        SELECT
+            id,
+            sender_discord_user_id,
+            recipient_discord_user_id,
+            direction,
+            content,
+            created_at
+        FROM messages
+        WHERE
+            sender_discord_user_id = ?
+            OR recipient_discord_user_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (
+            str(discord_user_id),
+            str(discord_user_id),
+            limit,
+        ),
+    ).fetchall()
+
+    connection.close()
+
+    return messages
+
+
 def archive_and_unregister(discord_user_id: int):
     active_connection = get_connection()
 

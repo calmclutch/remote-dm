@@ -7,16 +7,26 @@ from pydantic import BaseModel
 
 from backend.auth import require_api_auth
 from backend.messaging import prepare_message
+from database.database import get_messages, save_message
+
 
 load_dotenv()
 
+
 app = FastAPI(title="RemoteDM API")
+
 
 BOT_INTERNAL_SECRET = os.getenv("BOT_INTERNAL_SECRET")
 BOT_INTERNAL_PORT = os.getenv("BOT_INTERNAL_PORT", "8765")
+OWNER_DISCORD_ID = os.getenv("OWNER_DISCORD_ID")
+
 
 if not BOT_INTERNAL_SECRET:
     raise RuntimeError("BOT_INTERNAL_SECRET is not set in .env")
+
+if not OWNER_DISCORD_ID:
+    raise RuntimeError("OWNER_DISCORD_ID is not set in .env")
+
 
 class MessageRequest(BaseModel):
     recipient: str
@@ -44,6 +54,28 @@ async def protected_test(
 ):
     return {
         "authenticated": True,
+    }
+
+
+@app.get("/api/messages/{discord_user_id}")
+async def get_user_messages(
+    discord_user_id: int,
+    _: bool = Depends(require_api_auth),
+):
+    messages = get_messages(discord_user_id)
+
+    return {
+        "messages": [
+            {
+                "id": message["id"],
+                "sender_discord_user_id": message["sender_discord_user_id"],
+                "recipient_discord_user_id": message["recipient_discord_user_id"],
+                "direction": message["direction"],
+                "content": message["content"],
+                "created_at": message["created_at"],
+            }
+            for message in messages
+        ]
     }
 
 
@@ -85,6 +117,13 @@ async def send_message(
             status_code=502,
             detail="Discord messaging service unavailable.",
         )
+
+    save_message(
+        sender_discord_user_id=int(OWNER_DISCORD_ID),
+        recipient_discord_user_id=prepared["discord_user_id"],
+        direction="outgoing",
+        content=prepared["message"],
+    )
 
     return {
         "status": "sent",
