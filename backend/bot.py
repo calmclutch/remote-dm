@@ -25,6 +25,10 @@ if not TOKEN:
 if not GUILD_ID:
     raise RuntimeError("TEST_GUILD_ID is not set in .env")
 
+OWNER_ID = os.getenv("OWNER_DISCORD_ID")
+
+if not OWNER_ID:
+    raise RuntimeError("OWNER_DISCORD_ID is not set in .env")
 
 class RemoteDM(commands.Bot):
     def __init__(self):
@@ -148,6 +152,14 @@ async def unregister(interaction: discord.Interaction):
     description="Show people registered with RemoteDM."
 )
 async def friends(interaction: discord.Interaction):
+
+    if str(interaction.user.id) != OWNER_ID:
+        await interaction.response.send_message(
+            "You are not authorized to use this command.",
+            ephemeral=True,
+        )
+        return
+
     friends = get_registered_friends()
 
     if not friends:
@@ -198,6 +210,14 @@ async def alias(interaction: discord.Interaction, alias: str):
 )
 @app_commands.describe(name="Friend's name or alias")
 async def find(interaction: discord.Interaction, name: str):
+
+    if not is_registered(interaction.user.id):
+        await interaction.response.send_message(
+            "You need to register with /register first.",
+            ephemeral=True,
+        )
+        return
+
     friend = find_friend(name)
 
     if friend is None:
